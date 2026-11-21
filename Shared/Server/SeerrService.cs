@@ -629,7 +629,7 @@ namespace Gelatinarm.Shared.Server
                 return null;
             }
 
-            var percent = size > 0 ? (int)Math.Round((size - left) * 100 / size) : 0;
+            var percent = size > 0 ? (int)Math.Round((size - left) * 100 / size, MidpointRounding.AwayFromZero) : 0;
             return new SeerrDownload
             {
                 Percent = Math.Max(0, Math.Min(100, percent)),
