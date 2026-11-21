@@ -20,6 +20,7 @@ using Gelatinarm.Library;
 using Gelatinarm.Music;
 using Gelatinarm.Playback;
 using Gelatinarm.Player;
+using Gelatinarm.Search;
 using Gelatinarm.Settings;
 using Gelatinarm.Shared.Async;
 using Gelatinarm.Shared.Device;
@@ -209,6 +210,7 @@ namespace Gelatinarm
             services.AddSingleton<IAuthenticationService, AuthenticationService>();
             services.AddSingleton<IUserProfileService, UserProfileService>();
             services.AddSingleton<IMediaDiscoveryService, MediaDiscoveryService>();
+            services.AddSingleton<ISeerrService, SeerrService>();
 
             services.AddTransient<ServerSettingsViewModel>();
             services.AddTransient<PlaybackSettingsViewModel>();
@@ -229,6 +231,7 @@ namespace Gelatinarm
             services.AddTransient<ProfileSelectionViewModel>();
             services.AddTransient<ServerSelectionViewModel>();
             services.AddTransient<QuickConnectInstructionsViewModel>();
+            services.AddTransient<RequestViewModel>();
             services.AddTransient<MediaPlayerViewModel>();
 
             services.AddSingleton<IMediaPlaybackService, MediaPlaybackService>();
