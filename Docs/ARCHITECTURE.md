@@ -140,6 +140,28 @@ user id and image tag) so a profile whose server is out of reach still shows its
 picture. The copy is fetched after a validated sign-in or switch, follows the
 tag the server reports, and goes with the profile on sign-out.
 
+## Requests (Seerr)
+
+Search can offer titles the server does not have, requested through Seerr
+(formerly Jellyseerr/Overseerr). Nothing is configured in the app:
+`SeerrService` reads Seerr's URL from the Streamyfin server plugin's client
+config (`GET /streamyfin/config`, `settings.jellyseerrServerUrl`) and signs in
+with Seerr's Jellyfin Quick Connect (Seerr 3.4+): Seerr starts it, the app
+approves the code with its own session (`POST /QuickConnect/Authorize`), and
+Seerr returns a session cookie. No password is handled, and the plugin's
+optional admin API key is not used, so no key is shared between users. The
+cookie is sent by hand: the platform's cookie store is app-wide and would carry
+one user's session into the next. A server without the plugin, a Seerr URL,
+Quick Connect or a Seerr account for the user shows nothing; that answer is kept
+until `UserChanged`.
+
+`SearchPage` asks Seerr alongside the library and adds a "Not in library" row
+(results without a `jellyfinMediaId`, not available, people left out) when it
+answers. A tile opens `RequestPage`: the title's status and a Request button,
+and for a series the seasons not yet available, on their way or requested.
+Posters come from TMDB directly; Seerr's image proxy only answers when its
+admin has turned on image caching.
+
 ## Preferences
 
 Two stores:

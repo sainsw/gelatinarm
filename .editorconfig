@@ -457,3 +457,8 @@ dotnet_diagnostic.CA1812.severity = none
 # AppPreferences spells its defaults out on purpose: they are the settings' documented values
 [Shared/Preferences/AppPreferences.cs]
 dotnet_diagnostic.CA1805.severity = none
+
+# Seerr gives image paths relative to TMDB's image host, and its own image proxy answers only when
+# the Seerr admin has turned on image caching, so the host is named in the code
+[Shared/Server/SeerrService.cs]
+dotnet_diagnostic.S1075.severity = none

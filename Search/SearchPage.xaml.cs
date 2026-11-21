@@ -14,6 +14,7 @@ using Windows.UI.Xaml.Media;
 using Gelatinarm.Shared.Async;
 using Gelatinarm.Shared.Base;
 using Gelatinarm.Shared.Errors;
+using Gelatinarm.Shared.Server;
 using Gelatinarm.Shared.Ui;
 using Jellyfin.Sdk;
 using Jellyfin.Sdk.Generated.Models;
@@ -39,12 +40,14 @@ namespace Gelatinarm.Search
         };
 
         private readonly JellyfinApiClient _apiClient;
+        private readonly ISeerrService _seerrService;
         private BaseItemKind[] _currentFilter;
         private string _emptyStateMessage = "Try adjusting your search term or filters";
 
         private string _emptyStateTitle = "No results found";
         private string _lastSearchTerm;
         private CancellationTokenSource _searchCancellationTokenSource;
+        private CancellationTokenSource _seerrCancellationTokenSource;
 
         protected override Control InitialFocusControl => SearchBox;
 
@@ -53,6 +56,7 @@ namespace Gelatinarm.Search
             InitializeComponent();
 
             _apiClient = GetRequiredService<JellyfinApiClient>();
+            _seerrService = GetRequiredService<ISeerrService>();
             UpdateFilterButtons();
         }
 
@@ -86,6 +90,7 @@ namespace Gelatinarm.Search
         protected override void CancelOngoingOperations()
         {
             AsyncHelper.Cancel(ref _searchCancellationTokenSource);
+            AsyncHelper.Cancel(ref _seerrCancellationTokenSource);
         }
 
         protected override Task InitializePageAsync(object parameter)
@@ -160,6 +165,7 @@ namespace Gelatinarm.Search
             var searchCts = AsyncHelper.Supersede(ref _searchCancellationTokenSource);
             searchCts.CancelAfter(TimeSpan.FromSeconds(SearchConstants.SearchTimeoutSeconds));
             var token = searchCts.Token;
+            var requestableSearch = StartRequestableSearch(searchTerm);
 
             try
             {
@@ -226,6 +232,8 @@ namespace Gelatinarm.Search
                         UpdateEmptyState(searchTerm);
                     }
                 }, Logger, Dispatcher);
+
+                FireAndForget(() => ShowRequestableAsync(requestableSearch, searchCts, items.Count == 0));
             }
             catch (OperationCanceledException ex) when (searchCts == _searchCancellationTokenSource)
             {
@@ -415,58 +423,10 @@ namespace Gelatinarm.Search
                         continue;
                     }
 
-                    var headerPanel = new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Margin = new Thickness(0, 0, 0, 8)
-                    };
-
-                    headerPanel.Children.Add(new TextBlock
-                    {
-                        Text = group.Name,
-                        Style = Application.Current.Resources["SectionHeaderTextStyle"] as Style
-                    });
-
-                    headerPanel.Children.Add(new TextBlock
-                    {
-                        Text = $" ({groupItems.Count})",
-                        Style = Application.Current.Resources["SectionHeaderTextStyle"] as Style,
-                        Foreground = Application.Current.Resources["SystemControlForegroundBaseMediumBrush"] as Brush
-                    });
-
-                    GroupedResultsPanel.Children.Add(headerPanel);
-
                     var itemsToShow = isFiltered ? groupItems : groupItems.Take(15).ToList();
                     var hasMore = !isFiltered && groupItems.Count > 15;
 
-                    var listView = new ListView
-                    {
-                        ItemsSource = itemsToShow,
-                        ItemTemplate = Resources[group.TemplateKey] as DataTemplate,
-                        SelectionMode = ListViewSelectionMode.None,
-                        IsItemClickEnabled = true,
-                        Margin = new Thickness(0, 0, hasMore ? 12 : 24, 0),
-                        Padding = new Thickness(0),
-                        IsTabStop = true
-                    };
-
-                    var itemsPanelXaml = $@"
-                    <ItemsPanelTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'>
-                        <ItemsWrapGrid Orientation='Horizontal' MaximumRowsOrColumns='{group.Columns}'/>
-                    </ItemsPanelTemplate>";
-                    listView.ItemsPanel = XamlReader.Load(itemsPanelXaml) as ItemsPanelTemplate;
-
-                    var itemContainerStyle = new Style(typeof(ListViewItem));
-                    itemContainerStyle.Setters.Add(new Setter(HorizontalContentAlignmentProperty,
-                        HorizontalAlignment.Stretch));
-                    itemContainerStyle.Setters.Add(new Setter(MarginProperty, new Thickness(6)));
-                    itemContainerStyle.Setters.Add(new Setter(PaddingProperty, new Thickness(0)));
-                    itemContainerStyle.Setters.Add(new Setter(FocusVisualMarginProperty, new Thickness(-2)));
-                    listView.ItemContainerStyle = itemContainerStyle;
-
-                    listView.ItemClick += ListView_ItemClick;
-
-                    GroupedResultsPanel.Children.Add(listView);
+                    AddResultRow(group.Name, groupItems.Count, itemsToShow, group.TemplateKey, group.Columns, hasMore);
 
                     if (hasMore)
                     {
@@ -488,11 +448,124 @@ namespace Gelatinarm.Search
             }
         }
 
+        // A row: its name and count, then its tiles. A row followed by a "Show all" button keeps
+        // less space below it.
+        private void AddResultRow(string name, int count, object items, string templateKey, int columns,
+            bool hasMore)
+        {
+            var headerPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+
+            headerPanel.Children.Add(new TextBlock
+            {
+                Text = name,
+                Style = Application.Current.Resources["SectionHeaderTextStyle"] as Style
+            });
+
+            headerPanel.Children.Add(new TextBlock
+            {
+                Text = $" ({count})",
+                Style = Application.Current.Resources["SectionHeaderTextStyle"] as Style,
+                Foreground = Application.Current.Resources["SystemControlForegroundBaseMediumBrush"] as Brush
+            });
+
+            GroupedResultsPanel.Children.Add(headerPanel);
+
+            var listView = new ListView
+            {
+                ItemsSource = items,
+                ItemTemplate = Resources[templateKey] as DataTemplate,
+                SelectionMode = ListViewSelectionMode.None,
+                IsItemClickEnabled = true,
+                Margin = new Thickness(0, 0, hasMore ? 12 : 24, 0),
+                Padding = new Thickness(0),
+                IsTabStop = true
+            };
+
+            var itemsPanelXaml = $@"
+            <ItemsPanelTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'>
+                <ItemsWrapGrid Orientation='Horizontal' MaximumRowsOrColumns='{columns}'/>
+            </ItemsPanelTemplate>";
+            listView.ItemsPanel = XamlReader.Load(itemsPanelXaml) as ItemsPanelTemplate;
+
+            var itemContainerStyle = new Style(typeof(ListViewItem));
+            itemContainerStyle.Setters.Add(new Setter(HorizontalContentAlignmentProperty,
+                HorizontalAlignment.Stretch));
+            itemContainerStyle.Setters.Add(new Setter(MarginProperty, new Thickness(6)));
+            itemContainerStyle.Setters.Add(new Setter(PaddingProperty, new Thickness(0)));
+            itemContainerStyle.Setters.Add(new Setter(FocusVisualMarginProperty, new Thickness(-2)));
+            listView.ItemContainerStyle = itemContainerStyle;
+
+            listView.ItemClick += ListView_ItemClick;
+
+            GroupedResultsPanel.Children.Add(listView);
+        }
+
+        /// <summary>
+        ///     Seerr's films and series for the search, asked in parallel with the library search:
+        ///     none when the filter shows neither (Episodes, Music).
+        /// </summary>
+        private Task<IReadOnlyList<SeerrMedia>> StartRequestableSearch(string searchTerm)
+        {
+            if (_currentFilter?.Contains(BaseItemKind.Movie) == false &&
+                !_currentFilter.Contains(BaseItemKind.Series))
+            {
+                AsyncHelper.Cancel(ref _seerrCancellationTokenSource);
+                return Task.FromResult<IReadOnlyList<SeerrMedia>>(Array.Empty<SeerrMedia>());
+            }
+
+            var seerrCts = AsyncHelper.Supersede(ref _seerrCancellationTokenSource);
+            seerrCts.CancelAfter(TimeSpan.FromSeconds(SystemConstants.SeerrTimeoutSeconds));
+            return _seerrService.SearchAsync(searchTerm, seerrCts.Token);
+        }
+
+        /// <summary>
+        ///     Adds the "Not in library" row under the library's results once Seerr answers, unless
+        ///     a newer search has replaced this one. The library results are not held back for it.
+        /// </summary>
+        private async Task ShowRequestableAsync(Task<IReadOnlyList<SeerrMedia>> requestableSearch,
+            CancellationTokenSource searchCts, bool libraryWasEmpty)
+        {
+            var results = await requestableSearch.ConfigureAwait(false);
+            var filter = _currentFilter;
+            var shown = results.Where(r => filter?.Contains(r.MediaType == SeerrMediaType.Tv
+                ? BaseItemKind.Series
+                : BaseItemKind.Movie) != false).ToList();
+            if (shown.Count == 0)
+            {
+                return;
+            }
+
+            await UiHelper.RunOnUIThreadAsync(() =>
+            {
+                if (searchCts != _searchCancellationTokenSource)
+                {
+                    return;
+                }
+
+                AddResultRow("Not in library", shown.Count, shown, "RequestItemTemplate", 8, false);
+                GroupedResultsPanel.Visibility = Visibility.Visible;
+                if (libraryWasEmpty)
+                {
+                    NoResultsPanel.Visibility = Visibility.Collapsed;
+                    ResultsCountText.Text = "Nothing in your library matches";
+                    ResultsCountText.Visibility = Visibility.Visible;
+                }
+            }, Logger, Dispatcher).ConfigureAwait(false);
+        }
+
         private void ListView_ItemClick(object sender, ItemClickEventArgs e)
         {
             if (e.ClickedItem is BaseItemDto item)
             {
                 NavigateToItemDetails(item);
+            }
+            else if (e.ClickedItem is SeerrMedia media)
+            {
+                NavigationService.Navigate(typeof(RequestPage), media);
             }
         }
 

@@ -273,6 +273,10 @@
     <!-- Properties -->
     <Compile Include="Properties\AssemblyInfo.cs" />
     <!-- Search -->
+    <Compile Include="Search\RequestPage.xaml.cs">
+      <DependentUpon>RequestPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Search\RequestViewModel.cs" />
     <Compile Include="Search\SearchConstants.cs" />
     <Compile Include="Search\SearchPage.xaml.cs">
       <DependentUpon>SearchPage.xaml</DependentUpon>
@@ -318,6 +322,15 @@
     <Compile Include="Shared\Server\CacheManagerService.cs" />
     <Compile Include="Shared\Server\ConnectionTimeoutHandler.cs" />
     <Compile Include="Shared\Server\NetworkHelper.cs" />
+    <Compile Include="Shared\Server\SeerrDownload.cs" />
+    <Compile Include="Shared\Server\SeerrMedia.cs" />
+    <Compile Include="Shared\Server\SeerrMediaStatus.cs" />
+    <Compile Include="Shared\Server\SeerrMediaType.cs" />
+    <Compile Include="Shared\Server\SeerrQualityProfile.cs" />
+    <Compile Include="Shared\Server\SeerrRequestOptions.cs" />
+    <Compile Include="Shared\Server\SeerrRequestOutcome.cs" />
+    <Compile Include="Shared\Server\SeerrSeason.cs" />
+    <Compile Include="Shared\Server\SeerrService.cs" />
     <Compile Include="Shared\Server\ServiceLocator.cs" />
     <Compile Include="Shared\Server\SystemConstants.cs" />
     <Compile Include="Shared\Server\UrlHelper.cs" />
@@ -514,6 +527,10 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <!-- Search -->
+    <Page Include="Search\RequestPage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="Search\SearchPage.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
