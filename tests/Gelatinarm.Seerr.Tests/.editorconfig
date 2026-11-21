@@ -1,0 +1,4 @@
+# Inherits the repository's settings
+[*.cs]
+# Expected values written inline read better in a test than as fields
+dotnet_diagnostic.CA1861.severity = none

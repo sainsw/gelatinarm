@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tests for the Seerr service, outside the UWP solution so they run anywhere .NET 8 does:
+       dotnet test tests/Gelatinarm.Seerr.Tests. The service's own files are compiled in, against
+       stand-ins for the app types they touch (Stubs/), and talk to a fake Jellyfin and Seerr on
+       localhost. LiveSeerrTests run against a real server when GELATINARM_TEST_SERVER and
+       GELATINARM_TEST_TOKEN are set. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <!-- The app is held to C# 9 by its own build; the fake servers' minimal APIs need newer -->
+    <LangVersion>12.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\Shared\Server\Seerr*.cs" Link="App\%(Filename)%(Extension)" />
+    <Compile Include="..\..\Shared\Server\SystemConstants.cs" Link="App\SystemConstants.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="Jellyfin.Sdk" Version="2025.10.21" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="Xunit.SkippableFact" Version="1.5.23" />
+  </ItemGroup>
+</Project>
