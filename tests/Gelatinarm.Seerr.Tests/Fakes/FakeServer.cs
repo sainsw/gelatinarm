@@ -40,6 +40,12 @@ namespace Gelatinarm.Seerr.Tests.Fakes
         public List<string> AuthenticateCookies { get; set; } = new() { SessionCookie + "; Path=/; HttpOnly" };
 
         public string SearchJson { get; set; } = "{\"results\":[]}";
+
+        // The signed-in Seerr user's Permission flags (2: admin)
+        public int Permissions { get; set; } = 32;
+
+        // /service/radarr and /service/sonarr, and /service/{name}/{id}
+        public Dictionary<string, string> ServiceJson { get; } = new();
         public Dictionary<string, string> MediaJson { get; } = new();
 
         // Answers given before the normal one, in order: to fake an expired session or a refusal
@@ -59,6 +65,7 @@ namespace Gelatinarm.Seerr.Tests.Fakes
         public string LastAuthenticateBody;
         public string LastSearchQueryString;
         public string LastRequestBody;
+        public ConcurrentQueue<string> ServicePaths { get; } = new();
         public ConcurrentQueue<string> SeerrCookies { get; } = new();
 
         public static async Task<FakeServer> StartAsync()
@@ -149,6 +156,24 @@ namespace Gelatinarm.Seerr.Tests.Fakes
                 }
 
                 return HasSession(ctx) ? Results.Text(SearchJson, "application/json") : Results.StatusCode(403);
+            });
+
+            app.MapGet("/seerr/api/v1/auth/me", (HttpContext ctx) =>
+                HasSession(ctx)
+                    ? Results.Text($"{{\"id\":1,\"permissions\":{Permissions}}}", "application/json")
+                    : Results.StatusCode(403));
+
+            app.MapGet("/seerr/api/v1/service/{**path}", (HttpContext ctx, string path) =>
+            {
+                ServicePaths.Enqueue(path);
+                if (!HasSession(ctx))
+                {
+                    return Results.StatusCode(403);
+                }
+
+                return ServiceJson.TryGetValue(path, out var json)
+                    ? Results.Text(json, "application/json")
+                    : Results.StatusCode(404);
             });
 
             app.MapGet("/seerr/api/v1/{type}/{id}", (HttpContext ctx, string type, string id) =>

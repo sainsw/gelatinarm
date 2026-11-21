@@ -41,5 +41,24 @@ namespace Gelatinarm.Seerr.Tests
                 Assert.All(detail.Seasons, s => Assert.True(s.SeasonNumber > 0));
             }
         }
+
+        // Profiles come back only for users Seerr lets choose; either answer is valid, a failure is not
+        [SkippableFact]
+        public async Task Reads_request_options_on_a_real_server()
+        {
+            Skip.If(string.IsNullOrEmpty(Server) || string.IsNullOrEmpty(Token),
+                "GELATINARM_TEST_SERVER and GELATINARM_TEST_TOKEN are not set");
+            using var service = ServiceFactory.Create(Server, Token, out _);
+
+            var movie = await service.GetRequestOptionsAsync(SeerrMediaType.Movie, CancellationToken.None);
+            var tv = await service.GetRequestOptionsAsync(SeerrMediaType.Tv, CancellationToken.None);
+
+            Assert.Empty(service.Errors.Errors);
+            foreach (var options in new[] { movie, tv }.Where(o => o != null))
+            {
+                Assert.NotEmpty(options.Profiles);
+                Assert.InRange(options.DefaultProfileIndex, 0, options.Profiles.Count - 1);
+            }
+        }
     }
 }

@@ -141,7 +141,7 @@ namespace Gelatinarm.Seerr.Tests
             await using var server = await FakeServer.StartAsync();
             using var service = ServiceFactory.Create(server.BaseUrl, FakeServer.Token, out _);
 
-            var outcome = await service.RequestAsync(SeerrMediaType.Movie, 11, Array.Empty<int>(), CancellationToken.None);
+            var outcome = await service.RequestAsync(SeerrMediaType.Movie, 11, Array.Empty<int>(), null, CancellationToken.None);
 
             Assert.Equal(SeerrRequestOutcome.Requested, outcome);
             Assert.Equal("{\"mediaType\":\"movie\",\"mediaId\":11}", server.LastRequestBody);
@@ -153,7 +153,7 @@ namespace Gelatinarm.Seerr.Tests
             await using var server = await FakeServer.StartAsync();
             using var service = ServiceFactory.Create(server.BaseUrl, FakeServer.Token, out _);
 
-            await service.RequestAsync(SeerrMediaType.Tv, 1399, new[] { 4, 5 }, CancellationToken.None);
+            await service.RequestAsync(SeerrMediaType.Tv, 1399, new[] { 4, 5 }, null, CancellationToken.None);
 
             Assert.Equal("{\"mediaType\":\"tv\",\"mediaId\":1399,\"seasons\":[4,5]}", server.LastRequestBody);
         }
@@ -170,7 +170,7 @@ namespace Gelatinarm.Seerr.Tests
             using var service = ServiceFactory.Create(server.BaseUrl, FakeServer.Token, out _);
 
             Assert.Equal(expected,
-                await service.RequestAsync(SeerrMediaType.Movie, 11, Array.Empty<int>(), CancellationToken.None));
+                await service.RequestAsync(SeerrMediaType.Movie, 11, Array.Empty<int>(), null, CancellationToken.None));
         }
 
         [Fact]
@@ -181,7 +181,7 @@ namespace Gelatinarm.Seerr.Tests
             server.RequestStatuses.Enqueue(403);
             using var service = ServiceFactory.Create(server.BaseUrl, FakeServer.Token, out _);
 
-            var outcome = await service.RequestAsync(SeerrMediaType.Movie, 11, Array.Empty<int>(), CancellationToken.None);
+            var outcome = await service.RequestAsync(SeerrMediaType.Movie, 11, Array.Empty<int>(), null, CancellationToken.None);
 
             Assert.Equal(SeerrRequestOutcome.NotAllowed, outcome);
             Assert.Equal(2, server.InitiateCalls);
@@ -194,7 +194,7 @@ namespace Gelatinarm.Seerr.Tests
             server.ConfigStatus = 404;
             using var service = ServiceFactory.Create(server.BaseUrl, FakeServer.Token, out _);
 
-            var outcome = await service.RequestAsync(SeerrMediaType.Movie, 11, Array.Empty<int>(), CancellationToken.None);
+            var outcome = await service.RequestAsync(SeerrMediaType.Movie, 11, Array.Empty<int>(), null, CancellationToken.None);
 
             Assert.Equal(SeerrRequestOutcome.Failed, outcome);
             Assert.Null(server.LastRequestBody);
