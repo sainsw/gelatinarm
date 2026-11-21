@@ -32,7 +32,7 @@ namespace Gelatinarm.Shared.Server
                 return "under a minute";
             }
 
-            var rounded = TimeSpan.FromMinutes(Math.Round(timeLeft.TotalMinutes));
+            var rounded = TimeSpan.FromMinutes(Math.Round(timeLeft.TotalMinutes, MidpointRounding.AwayFromZero));
             return rounded < TimeSpan.FromHours(1)
                 ? $"{rounded.Minutes} min"
                 : $"{(int)rounded.TotalHours} h {rounded.Minutes} min";
