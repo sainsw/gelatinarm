@@ -44,6 +44,17 @@
                         Foreground="{StaticResource SystemControlHighlightAccentBrush}"
                         Style="{StaticResource StandardBodyTextStyle}"
                         Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
+                    <StackPanel Margin="0,8,0,0" Visibility="{x:Bind ViewModel.DownloadText, Mode=OneWay, Converter={StaticResource NullableToVisibilityConverter}}">
+                        <ProgressBar
+                            Width="400"
+                            HorizontalAlignment="Left"
+                            Maximum="100"
+                            Value="{x:Bind ViewModel.DownloadPercent, Mode=OneWay}" />
+                        <TextBlock
+                            Margin="0,4,0,0"
+                            Style="{StaticResource StandardCaptionTextStyle}"
+                            Text="{x:Bind ViewModel.DownloadText, Mode=OneWay}" />
+                    </StackPanel>
                     <TextBlock
                         MaxWidth="900"
                         Margin="0,16,0,0"
@@ -51,6 +62,16 @@
                         Style="{StaticResource StandardBodyTextStyle}"
                         Text="{x:Bind ViewModel.Overview, Mode=OneWay}"
                         TextWrapping="Wrap" />
+
+                    <ComboBox
+                        Width="300"
+                        Margin="0,24,0,0"
+                        DisplayMemberPath="Name"
+                        Header="Quality"
+                        ItemsSource="{x:Bind ViewModel.Profiles}"
+                        SelectedIndex="{x:Bind ViewModel.SelectedProfileIndex, Mode=TwoWay}"
+                        Style="{StaticResource StandardComboBoxStyle}"
+                        Visibility="{x:Bind ViewModel.CanChooseQuality, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                     <StackPanel
                         Margin="0,24,0,0"

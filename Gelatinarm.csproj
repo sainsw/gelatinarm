@@ -322,9 +322,12 @@
     <Compile Include="Shared\Server\CacheManagerService.cs" />
     <Compile Include="Shared\Server\ConnectionTimeoutHandler.cs" />
     <Compile Include="Shared\Server\NetworkHelper.cs" />
+    <Compile Include="Shared\Server\SeerrDownload.cs" />
     <Compile Include="Shared\Server\SeerrMedia.cs" />
     <Compile Include="Shared\Server\SeerrMediaStatus.cs" />
     <Compile Include="Shared\Server\SeerrMediaType.cs" />
+    <Compile Include="Shared\Server\SeerrQualityProfile.cs" />
+    <Compile Include="Shared\Server\SeerrRequestOptions.cs" />
     <Compile Include="Shared\Server\SeerrRequestOutcome.cs" />
     <Compile Include="Shared\Server\SeerrSeason.cs" />
     <Compile Include="Shared\Server\SeerrService.cs" />

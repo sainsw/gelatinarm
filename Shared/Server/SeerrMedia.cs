@@ -21,6 +21,9 @@ namespace Gelatinarm.Shared.Server
         // A series' seasons, specials left out; filled by ISeerrService.GetMediaAsync only
         public IReadOnlyList<SeerrSeason> Seasons { get; set; }
 
+        // Null when nothing is downloading
+        public SeerrDownload Download { get; set; }
+
         public string StatusText => DescribeStatus(Status);
 
         // The search tile's second line

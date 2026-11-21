@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -36,16 +37,27 @@ namespace Gelatinarm.Shared.Server
         Task<SeerrMedia> GetMediaAsync(SeerrMediaType mediaType, int tmdbId, CancellationToken cancellationToken);
 
         /// <summary>
-        ///     Asks for a film, or for <paramref name="seasons" /> of a series.
+        ///     The quality profiles the user may choose for a request of this kind; null when
+        ///     Seerr does not let the user choose (the request then takes the server's default).
+        /// </summary>
+        Task<SeerrRequestOptions> GetRequestOptionsAsync(SeerrMediaType mediaType, CancellationToken cancellationToken);
+
+        /// <summary>
+        ///     Asks for a film, or for <paramref name="seasons" /> of a series, in
+        ///     <paramref name="profile" /> (null: the server's default).
         /// </summary>
         Task<SeerrRequestOutcome> RequestAsync(SeerrMediaType mediaType, int tmdbId, IReadOnlyList<int> seasons,
-            CancellationToken cancellationToken);
+            SeerrQualityProfile profile, CancellationToken cancellationToken);
     }
 
     public class SeerrService : BaseService, ISeerrService
     {
         private const string PosterBaseUrl = "https://image.tmdb.org/t/p/w300";
         private const string BackdropBaseUrl = "https://image.tmdb.org/t/p/w1280";
+
+        // Seerr's Permission flags that let a user choose the server and profile for a request
+        // (server/lib/permissions.ts: ADMIN, MANAGE_REQUESTS, REQUEST_ADVANCED)
+        private const int ChooseQualityPermissions = 2 | 16 | 8192;
 
         // express-session's cookie: the only credential Seerr gives a Jellyfin sign-in
         private const string SessionCookieName = "connect.sid=";
@@ -131,13 +143,46 @@ namespace Gelatinarm.Shared.Server
             }
         }
 
+        public async Task<SeerrRequestOptions> GetRequestOptionsAsync(SeerrMediaType mediaType,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var (meStatus, me) = await SendAsync(HttpMethod.Get, "/api/v1/auth/me", null, cancellationToken)
+                    .ConfigureAwait(false);
+                if (meStatus != HttpStatusCode.OK || !MayChooseQuality(me))
+                {
+                    return null;
+                }
+
+                var service = ServiceName(mediaType);
+                var (serversStatus, servers) = await SendAsync(HttpMethod.Get, $"/api/v1/service/{service}", null,
+                    cancellationToken).ConfigureAwait(false);
+                var serverId = serversStatus == HttpStatusCode.OK ? ReadDefaultServerId(servers) : null;
+                if (serverId == null)
+                {
+                    return null;
+                }
+
+                var (detailStatus, detail) = await SendAsync(HttpMethod.Get, $"/api/v1/service/{service}/{serverId}",
+                    null, cancellationToken).ConfigureAwait(false);
+                return detailStatus == HttpStatusCode.OK ? ReadRequestOptions(detail, serverId.Value) : null;
+            }
+            catch (Exception ex)
+            {
+                return await ErrorHandler.HandleErrorAsync<SeerrRequestOptions>(ex,
+                    CreateErrorContext("GetRequestOptionsAsync", ErrorCategory.Network, ErrorSeverity.Warning), null)
+                    .ConfigureAwait(false);
+            }
+        }
+
         public async Task<SeerrRequestOutcome> RequestAsync(SeerrMediaType mediaType, int tmdbId,
-            IReadOnlyList<int> seasons, CancellationToken cancellationToken)
+            IReadOnlyList<int> seasons, SeerrQualityProfile profile, CancellationToken cancellationToken)
         {
             try
             {
                 var (status, _) = await SendAsync(HttpMethod.Post, "/api/v1/request",
-                    RequestBody(mediaType, tmdbId, seasons), cancellationToken).ConfigureAwait(false);
+                    RequestBody(mediaType, tmdbId, seasons, profile), cancellationToken).ConfigureAwait(false);
 
                 Logger.LogInformation("Seerr request for {MediaType} {TmdbId}: {StatusCode}", mediaType, tmdbId, status);
                 return status switch
@@ -375,6 +420,71 @@ namespace Gelatinarm.Shared.Server
             return null;
         }
 
+        private static bool MayChooseQuality(string json)
+        {
+            using var document = JsonDocument.Parse(json);
+            return ((GetInt(document.RootElement, "permissions") ?? 0) & ChooseQualityPermissions) != 0;
+        }
+
+        // The server a request goes to when none is named: the default, never a 4K one (this
+        // app does not offer 4K requests)
+        private static int? ReadDefaultServerId(string json)
+        {
+            using var document = JsonDocument.Parse(json);
+            var servers = document.RootElement;
+            if (servers.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            int? first = null;
+            foreach (var server in servers.EnumerateArray())
+            {
+                if (Child(server, "is4k").ValueKind == JsonValueKind.True)
+                {
+                    continue;
+                }
+
+                var id = GetInt(server, "id");
+                if (Child(server, "isDefault").ValueKind == JsonValueKind.True)
+                {
+                    return id;
+                }
+
+                first ??= id;
+            }
+
+            return first;
+        }
+
+        private static SeerrRequestOptions ReadRequestOptions(string json, int serverId)
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            var defaultId = GetInt(Child(root, "server"), "activeProfileId");
+
+            var profiles = new List<SeerrQualityProfile>();
+            var defaultIndex = 0;
+            foreach (var item in Items(root, "profiles"))
+            {
+                var id = GetInt(item, "id");
+                var name = GetString(item, "name");
+                if (id == null || string.IsNullOrEmpty(name))
+                {
+                    continue;
+                }
+
+                if (id == defaultId)
+                {
+                    defaultIndex = profiles.Count;
+                }
+
+                profiles.Add(new SeerrQualityProfile { ServerId = serverId, Id = id.Value, Name = name });
+            }
+
+            return profiles.Count == 0 ? null : new SeerrRequestOptions { Profiles = profiles, DefaultProfileIndex = defaultIndex };
+        }
+
         private static IReadOnlyList<SeerrMedia> ReadSearchResults(string json)
         {
             using var document = JsonDocument.Parse(json);
@@ -428,7 +538,8 @@ namespace Gelatinarm.Shared.Server
                 Overview = GetString(item, "overview"),
                 PosterUrl = string.IsNullOrEmpty(posterPath) ? null : PosterBaseUrl + posterPath,
                 BackdropUrl = string.IsNullOrEmpty(backdropPath) ? null : BackdropBaseUrl + backdropPath,
-                Status = ToStatus(GetInt(Child(item, "mediaInfo"), "status"))
+                Status = ToStatus(GetInt(Child(item, "mediaInfo"), "status")),
+                Download = ReadDownload(Child(item, "mediaInfo"), mediaType)
             };
         }
 
@@ -491,6 +602,42 @@ namespace Gelatinarm.Shared.Server
             return seasons;
         }
 
+        /// <summary>
+        ///     Radarr's or Sonarr's queue for the title, which Seerr passes on: sizes in bytes and a
+        ///     time left as a .NET TimeSpan string ("00:18:20", "1.02:00:00"), or none.
+        /// </summary>
+        private static SeerrDownload ReadDownload(JsonElement mediaInfo, SeerrMediaType mediaType)
+        {
+            double size = 0;
+            double left = 0;
+            var count = 0;
+            TimeSpan? longest = null;
+            foreach (var item in Items(mediaInfo, "downloadStatus"))
+            {
+                count++;
+                size += GetDouble(item, "size") ?? 0;
+                left += GetDouble(item, "sizeLeft") ?? 0;
+                if (TimeSpan.TryParse(GetString(item, "timeLeft"), CultureInfo.InvariantCulture, out var timeLeft) &&
+                    (longest == null || timeLeft > longest))
+                {
+                    longest = timeLeft;
+                }
+            }
+
+            if (count == 0)
+            {
+                return null;
+            }
+
+            var percent = size > 0 ? (int)Math.Round((size - left) * 100 / size) : 0;
+            return new SeerrDownload
+            {
+                Percent = Math.Max(0, Math.Min(100, percent)),
+                TimeLeft = longest,
+                EpisodeCount = mediaType == SeerrMediaType.Tv ? count : 0
+            };
+        }
+
         private static SeerrMediaStatus? ToStatus(int? value)
         {
             return value switch
@@ -504,7 +651,8 @@ namespace Gelatinarm.Shared.Server
             };
         }
 
-        private static string RequestBody(SeerrMediaType mediaType, int tmdbId, IReadOnlyList<int> seasons)
+        private static string RequestBody(SeerrMediaType mediaType, int tmdbId, IReadOnlyList<int> seasons,
+            SeerrQualityProfile profile)
         {
             using var stream = new MemoryStream();
             using (var writer = new Utf8JsonWriter(stream))
@@ -521,6 +669,15 @@ namespace Gelatinarm.Shared.Server
                     }
 
                     writer.WriteEndArray();
+                }
+
+                // Seerr applies a profile only with its server, and only when is4k matches that
+                // server's: an absent is4k reads as a mismatch and the profile is dropped
+                if (profile != null)
+                {
+                    writer.WriteNumber("serverId", profile.ServerId);
+                    writer.WriteNumber("profileId", profile.Id);
+                    writer.WriteBoolean("is4k", false);
                 }
 
                 writer.WriteEndObject();
@@ -547,6 +704,11 @@ namespace Gelatinarm.Shared.Server
             return mediaType == SeerrMediaType.Tv ? "tv" : "movie";
         }
 
+        private static string ServiceName(SeerrMediaType mediaType)
+        {
+            return mediaType == SeerrMediaType.Tv ? "sonarr" : "radarr";
+        }
+
         // Seerr leaves out or nulls what it does not know, so every read tolerates a missing value
         private static JsonElement Child(JsonElement element, string name)
         {
@@ -565,6 +727,12 @@ namespace Gelatinarm.Shared.Server
         {
             var value = Child(element, name);
             return value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        }
+
+        private static double? GetDouble(JsonElement element, string name)
+        {
+            var value = Child(element, name);
+            return value.ValueKind == JsonValueKind.Number ? value.GetDouble() : null;
         }
 
         private static int? GetInt(JsonElement element, string name)
