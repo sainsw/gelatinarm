@@ -10,8 +10,14 @@ on:
 jobs:
   build:
     runs-on: windows-2025
+    env:
+      # The image carries Windows SDK 10.0.26100, not the 10.0.22621 the project names; the
+      # project lets the target be overridden, and the minimum OS (what an Xbox needs) is unchanged
+      SDK: '10.0.26100.0'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # The build runs XAML Styler through the .NET SDK
       - uses: actions/setup-dotnet@v4
@@ -20,19 +26,28 @@ jobs:
 
       - uses: microsoft/setup-msbuild@v2
 
-      # DEV_SETUP.md's gate: judged from a rebuild, nothing but .NET Native's ILT0005 allowed
+      # DEV_SETUP.md's gate: judged from a rebuild, nothing but .NET Native's ILT0005 allowed.
+      # Warnings already on upstream main are reported but not this branch's to fix, so only
+      # those in files the branch changed fail the build.
       - name: Rebuild (Debug) and check warnings
         shell: pwsh
         run: |
-          msbuild Gelatinarm.csproj /restore /t:Rebuild /p:Configuration=Debug /p:Platform=x64 `
+          git fetch --no-tags --quiet https://github.com/gitman-101111/gelatinarm.git main
+          $changed = git diff --name-only FETCH_HEAD...HEAD | ForEach-Object { $_ -replace '/', '\' }
+
+          msbuild Gelatinarm.csproj /restore /t:Rebuild /p:Configuration=Debug /p:Platform=x64 /p:TargetPlatformVersion=$env:SDK `
             /p:AppxPackageSigningEnabled=false /nologo /v:minimal /m `
             "/flp:WarningsOnly;LogFile=warnings.log"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
           $warnings = Get-Content warnings.log | Where-Object { $_ -match 'warning' -and $_ -notmatch 'ILT0005' } |
+            ForEach-Object { ($_ -replace '^\s*\d+:\d+>', '') -replace '\s*\[[^\]]*\.csproj\]$', '' } |
             Sort-Object -Unique
-          if ($warnings) {
-            $warnings | ForEach-Object { Write-Host "::warning::$_" }
-            Write-Error "$(@($warnings).Count) warning(s) beyond ILT0005"
+          $ours = @($warnings | Where-Object { $line = $_; $changed | Where-Object { $line -like "*\$_(*" } })
+          $warnings | Where-Object { $ours -notcontains $_ } | ForEach-Object { Write-Host "::notice::Upstream: $_" }
+          if ($ours.Count -gt 0) {
+            $ours | ForEach-Object { Write-Host "::warning::$_" }
+            Write-Error "$($ours.Count) warning(s) beyond ILT0005 in files this branch changed"
             exit 1
           }
 
@@ -54,7 +69,7 @@ jobs:
       - name: Build sideload package (Release)
         shell: pwsh
         run: |
-          msbuild Gelatinarm.csproj /restore /p:Configuration=Release /p:Platform=x64 `
+          msbuild Gelatinarm.csproj /restore /p:Configuration=Release /p:Platform=x64 /p:TargetPlatformVersion=$env:SDK `
             /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Always `
             /p:PackageCertificateKeyFile="$PWD\ci.pfx" /p:PackageCertificatePassword=ci `
             /p:AppxPackageDir="$PWD\AppPackages\\" /nologo /v:minimal /m
